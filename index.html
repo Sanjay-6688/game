@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Minimal Car Racing</title>
+    <link rel="stylesheet" href="styles.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&display=swap" rel="stylesheet">
+</head>
+<body>
+    <div id="game-container">
+        <canvas id="gameCanvas" width="400" height="600"></canvas>
+        <div id="ui-layer">
+            <div id="start-screen" class="screen">
+                <h1>NEON RACER</h1>
+                <p class="pulse">Press SPACE to Start</p>
+                <p class="controls-hint">Use Arrow Keys or A/D to steer</p>
+            </div>
+            <div id="game-over-screen" class="screen hidden">
+                <h1>CRASHED!</h1>
+                <p>Score: <span id="final-score">0</span></p>
+                <p class="pulse">Press SPACE to Restart</p>
+            </div>
+            <div id="hud" class="hidden">
+                <div class="score-display">SCORE <span id="score">0</span></div>
+            </div>
+        </div>
+    </div>
+    <script src="script.js"></script>
+</body>
+</html>
