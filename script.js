@@ -1,27 +1,21 @@
-const canvas = document.getElementById('gameCanvas');
-const ctx = canvas.getContext('2d');
+import * as THREE from 'three';
 
+// UI Elements
 const startScreen = document.getElementById('start-screen');
 const gameOverScreen = document.getElementById('game-over-screen');
 const hud = document.getElementById('hud');
 const scoreElement = document.getElementById('score');
 const finalScoreElement = document.getElementById('final-score');
 
-// Game constants and state
-const CANVAS_WIDTH = canvas.width;
-const CANVAS_HEIGHT = canvas.height;
-const CAR_WIDTH = 40;
-const CAR_HEIGHT = 70;
-const LANE_WIDTH = CANVAS_WIDTH / 3;
-
-let gameState = 'START'; // START, PLAYING, GAMEOVER
+// Game State
+let gameState = 'START';
 let score = 0;
-let speed = 5;
-let baseSpeed = 5;
-let animationId;
+let speed = 1.0; // Units per frame
+let baseSpeed = 1.0;
 let frameCount = 0;
+let animationId;
 
-// Input tracking
+// Input
 const keys = {
     ArrowLeft: false,
     ArrowRight: false,
@@ -33,8 +27,6 @@ const keys = {
 
 window.addEventListener('keydown', (e) => {
     if (keys.hasOwnProperty(e.key)) keys[e.key] = true;
-    
-    // Start or restart game on spacebar
     if (e.code === 'Space') {
         if (gameState === 'START' || gameState === 'GAMEOVER') {
             startGame();
@@ -46,24 +38,161 @@ window.addEventListener('keyup', (e) => {
     if (keys.hasOwnProperty(e.key)) keys[e.key] = false;
 });
 
-// Entities
-const player = {
-    x: CANVAS_WIDTH / 2 - CAR_WIDTH / 2,
-    y: CANVAS_HEIGHT - CAR_HEIGHT - 20,
-    width: CAR_WIDTH,
-    height: CAR_HEIGHT,
-    color: '#38bdf8', // Neon blue
-    dx: 7
-};
+// Three.js Setup
+const container = document.getElementById('game-container');
+const scene = new THREE.Scene();
+scene.fog = new THREE.FogExp2(0x000000, 0.015); // Black fog for neon aesthetic
 
-let obstacles = [];
-let roadLines = [];
+const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+// Position camera slightly behind and above the car
+const cameraOffset = new THREE.Vector3(0, 4, 10);
 
-function initRoadLines() {
-    roadLines = [];
-    for (let i = 0; i < CANVAS_HEIGHT; i += 60) {
-        roadLines.push({ y: i });
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+container.appendChild(renderer.domElement);
+
+// Handle resize
+window.addEventListener('resize', () => {
+    camera.aspect = window.innerWidth / window.innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(window.innerWidth, window.innerHeight);
+});
+
+// Lighting
+const ambientLight = new THREE.AmbientLight(0xffffff, 0.4);
+scene.add(ambientLight);
+
+const dirLight = new THREE.DirectionalLight(0xffffff, 1.2);
+dirLight.position.set(20, 50, 20);
+dirLight.castShadow = true;
+dirLight.shadow.mapSize.width = 1024;
+dirLight.shadow.mapSize.height = 1024;
+dirLight.shadow.camera.near = 0.5;
+dirLight.shadow.camera.far = 150;
+dirLight.shadow.camera.left = -30;
+dirLight.shadow.camera.right = 30;
+dirLight.shadow.camera.top = 30;
+dirLight.shadow.camera.bottom = -30;
+scene.add(dirLight);
+
+// Helper function to create a car model
+function createCarModel(colorHex, isPlayer = false) {
+    const car = new THREE.Group();
+    
+    // Chassis
+    const chassisGeo = new THREE.BoxGeometry(2, 1, 4.5);
+    const chassisMat = new THREE.MeshPhongMaterial({ 
+        color: colorHex, 
+        shininess: 100 
+    });
+    const chassis = new THREE.Mesh(chassisGeo, chassisMat);
+    chassis.position.y = 0.8;
+    chassis.castShadow = true;
+    chassis.receiveShadow = true;
+    car.add(chassis);
+    
+    // Cabin
+    const cabinGeo = new THREE.BoxGeometry(1.6, 0.8, 2.2);
+    const cabinMat = new THREE.MeshPhongMaterial({ 
+        color: 0x111111, // Dark windows
+        shininess: 150 
+    });
+    const cabin = new THREE.Mesh(cabinGeo, cabinMat);
+    cabin.position.y = 1.7;
+    cabin.position.z = -0.5;
+    cabin.castShadow = true;
+    car.add(cabin);
+    
+    // Headlights/Taillights glow
+    if (!isPlayer) {
+        // Red glow for obstacles facing player
+        const lightGeo = new THREE.BoxGeometry(1.8, 0.3, 0.1);
+        const lightMat = new THREE.MeshBasicMaterial({ color: 0xff0000 });
+        const light = new THREE.Mesh(lightGeo, lightMat);
+        light.position.set(0, 0.8, 2.26); // Back of the car
+        car.add(light);
+    } else {
+        // Cyan glow for player engine/thruster
+        const thrustGeo = new THREE.BoxGeometry(1.2, 0.3, 0.1);
+        const thrustMat = new THREE.MeshBasicMaterial({ color: 0x00ffff });
+        const thruster = new THREE.Mesh(thrustGeo, thrustMat);
+        thruster.position.set(0, 0.6, 2.26);
+        car.add(thruster);
+        
+        const pointLight = new THREE.PointLight(0x00ffff, 2, 10);
+        pointLight.position.set(0, 0.6, 2.5);
+        car.add(pointLight);
     }
+    
+    // Wheels
+    const wheelGeo = new THREE.CylinderGeometry(0.5, 0.5, 0.4, 16);
+    wheelGeo.rotateZ(Math.PI / 2);
+    const wheelMat = new THREE.MeshPhongMaterial({ color: 0x222222 });
+    
+    const wheelPositions = [
+        [-1.1, 0.5, 1.4],
+        [1.1, 0.5, 1.4],
+        [-1.1, 0.5, -1.4],
+        [1.1, 0.5, -1.4]
+    ];
+    
+    wheelPositions.forEach(p => {
+        const wheel = new THREE.Mesh(wheelGeo, wheelMat);
+        wheel.position.set(p[0], p[1], p[2]);
+        wheel.castShadow = true;
+        car.add(wheel);
+    });
+
+    return car;
+}
+
+// Player Setup
+const player = createCarModel(0x38bdf8, true); // Neon Blue
+scene.add(player);
+
+// Collision Boxes
+const playerBox = new THREE.Box3();
+const obsBox = new THREE.Box3();
+
+// Environment / Road
+const roadGroup = new THREE.Group();
+scene.add(roadGroup);
+
+const roadGeo = new THREE.PlaneGeometry(30, 1000);
+const roadMat = new THREE.MeshPhongMaterial({ 
+    color: 0x1e293b, 
+    side: THREE.DoubleSide 
+});
+const roadPlane = new THREE.Mesh(roadGeo, roadMat);
+roadPlane.rotation.x = -Math.PI / 2;
+roadPlane.receiveShadow = true;
+roadGroup.add(roadPlane);
+
+// Neon Grid lines to simulate speed
+const gridHelper = new THREE.GridHelper(30, 10, 0x38bdf8, 0x475569);
+gridHelper.position.y = 0.02;
+roadGroup.add(gridHelper);
+
+// Obstacles
+let obstacles = [];
+const lanes = [-5, 0, 5]; // Left, Center, Right lanes
+const colors = [0xf43f5e, 0xa855f7, 0xfbbf24, 0x10b981];
+
+function spawnObstacle() {
+    const lane = lanes[Math.floor(Math.random() * lanes.length)];
+    const color = colors[Math.floor(Math.random() * colors.length)];
+    
+    const obs = createCarModel(color);
+    obs.position.set(lane, 0, player.position.z - 200 - Math.random() * 50);
+    obs.rotation.y = Math.PI; // Face the player
+    
+    // Add custom property to track if scored
+    obs.userData = { passed: false };
+    
+    scene.add(obs);
+    obstacles.push(obs);
 }
 
 function startGame() {
@@ -71,194 +200,125 @@ function startGame() {
     score = 0;
     speed = baseSpeed;
     frameCount = 0;
+    
+    // Reset Player
+    player.position.set(0, 0, 0);
+    
+    // Clear Obstacles
+    obstacles.forEach(obs => scene.remove(obs));
     obstacles = [];
     
-    player.x = CANVAS_WIDTH / 2 - CAR_WIDTH / 2;
-    
-    initRoadLines();
-    
+    // Reset UI
     startScreen.classList.add('hidden');
     gameOverScreen.classList.add('hidden');
     hud.classList.remove('hidden');
-    
     scoreElement.innerText = score;
     
-    cancelAnimationFrame(animationId);
-    gameLoop();
+    if (!animationId) {
+        animate();
+    }
 }
 
 function gameOver() {
     gameState = 'GAMEOVER';
-    cancelAnimationFrame(animationId);
-    
     hud.classList.add('hidden');
     gameOverScreen.classList.remove('hidden');
     finalScoreElement.innerText = score;
 }
 
-function spawnObstacle() {
-    // Pick a random lane (0, 1, or 2)
-    const lane = Math.floor(Math.random() * 3);
-    const x = lane * LANE_WIDTH + (LANE_WIDTH / 2) - (CAR_WIDTH / 2);
+function animate() {
+    animationId = requestAnimationFrame(animate);
     
-    // Add variations in color
-    const colors = ['#f43f5e', '#a855f7', '#fbbf24', '#10b981'];
-    const color = colors[Math.floor(Math.random() * colors.length)];
-    
-    obstacles.push({
-        x: x,
-        y: -CAR_HEIGHT,
-        width: CAR_WIDTH,
-        height: CAR_HEIGHT,
-        color: color,
-        passed: false
-    });
-}
-
-function update() {
-    // Player movement
-    if (keys.ArrowLeft || keys.a || keys.A) {
-        player.x -= player.dx;
-    }
-    if (keys.ArrowRight || keys.d || keys.D) {
-        player.x += player.dx;
-    }
-    
-    // Clamp player to screen
-    if (player.x < 0) player.x = 0;
-    if (player.x + player.width > CANVAS_WIDTH) player.x = CANVAS_WIDTH - player.width;
-    
-    // Update road lines
-    for (let i = 0; i < roadLines.length; i++) {
-        roadLines[i].y += speed;
-        if (roadLines[i].y > CANVAS_HEIGHT) {
-            roadLines[i].y = -60;
-        }
-    }
-    
-    // Spawning obstacles
-    // Difficulty increases with score: spawn rate and speed
-    let spawnRate = Math.max(40, 90 - Math.floor(score / 5));
-    if (frameCount % spawnRate === 0) {
-        spawnObstacle();
-    }
-    
-    // Update obstacles
-    for (let i = 0; i < obstacles.length; i++) {
-        let obs = obstacles[i];
-        obs.y += speed;
+    if (gameState === 'PLAYING') {
+        frameCount++;
         
-        // Check collision
-        if (player.x < obs.x + obs.width &&
-            player.x + player.width > obs.x &&
-            player.y < obs.y + obs.height &&
-            player.y + player.height > obs.y) {
-            // Collision detected!
-            gameOver();
+        // Move Player Forward
+        player.position.z -= speed;
+        
+        // Move camera to follow player smoothly
+        camera.position.x = player.position.x * 0.5; // Slight drift
+        camera.position.y = player.position.y + cameraOffset.y;
+        camera.position.z = player.position.z + cameraOffset.z;
+        camera.lookAt(player.position.x, player.position.y, player.position.z - 10);
+        
+        // Move Light with player
+        dirLight.position.z = player.position.z + 20;
+        
+        // Player Steering
+        const steerSpeed = 0.3;
+        if (keys.ArrowLeft || keys.a || keys.A) {
+            player.position.x -= steerSpeed;
+            // Slight roll for effect
+            player.rotation.z = Math.min(player.rotation.z + 0.05, 0.2); 
+        } else if (keys.ArrowRight || keys.d || keys.D) {
+            player.position.x += steerSpeed;
+            player.rotation.z = Math.max(player.rotation.z - 0.05, -0.2);
+        } else {
+            // Return roll to 0
+            player.rotation.z *= 0.8;
         }
         
-        // Update score
-        if (!obs.passed && obs.y > player.y + player.height) {
-            obs.passed = true;
-            score++;
-            scoreElement.innerText = score;
+        // Clamp player to road
+        if (player.position.x < -10) player.position.x = -10;
+        if (player.position.x > 10) player.position.x = 10;
+        
+        // Animate road grid (move it forward infinitely)
+        gridHelper.position.z = player.position.z - (player.position.z % 3);
+        roadPlane.position.z = player.position.z;
+        
+        // Spawn Obstacles
+        let spawnRate = Math.max(30, 80 - Math.floor(score / 2));
+        if (frameCount % spawnRate === 0) {
+            spawnObstacle();
+        }
+        
+        // Update Player Box for collision
+        playerBox.setFromObject(player);
+        
+        // Update Obstacles
+        for (let i = obstacles.length - 1; i >= 0; i--) {
+            let obs = obstacles[i];
             
-            // Increase speed slightly every 10 points
-            if (score % 10 === 0) {
-                speed += 0.5;
+            // Obstacles move towards player slightly faster than stationary
+            obs.position.z += 0.5;
+            
+            // Check Collision
+            obsBox.setFromObject(obs);
+            // Shrink boxes slightly to be forgiving
+            obsBox.expandByScalar(-0.2);
+            playerBox.expandByScalar(-0.2);
+            
+            if (playerBox.intersectsBox(obsBox)) {
+                gameOver();
+            }
+            
+            // Score tracking
+            if (!obs.userData.passed && obs.position.z > player.position.z) {
+                obs.userData.passed = true;
+                score++;
+                scoreElement.innerText = score;
+                
+                if (score % 5 === 0) {
+                    speed += 0.05; // Increase speed
+                }
+            }
+            
+            // Remove passed obstacles
+            if (obs.position.z > player.position.z + 20) {
+                scene.remove(obs);
+                obstacles.splice(i, 1);
             }
         }
-    }
-    
-    // Remove off-screen obstacles
-    obstacles = obstacles.filter(obs => obs.y < CANVAS_HEIGHT);
-    
-    frameCount++;
-}
-
-function drawCar(x, y, width, height, color) {
-    ctx.fillStyle = color;
-    
-    // Main body
-    ctx.beginPath();
-    ctx.roundRect(x, y + 10, width, height - 20, 5);
-    ctx.fill();
-    
-    // Roof/Cockpit
-    ctx.fillStyle = 'rgba(0, 0, 0, 0.4)';
-    ctx.beginPath();
-    ctx.roundRect(x + 5, y + 25, width - 10, height - 50, 3);
-    ctx.fill();
-    
-    // Headlights (if it's the player, or taillights if it's an obstacle going down)
-    ctx.fillStyle = color === '#38bdf8' ? '#ffffff' : '#fca5a5';
-    // Left light
-    ctx.beginPath();
-    ctx.roundRect(x + 5, color === '#38bdf8' ? y + 5 : y + height - 10, 8, 5, 2);
-    ctx.fill();
-    
-    // Right light
-    ctx.beginPath();
-    ctx.roundRect(x + width - 13, color === '#38bdf8' ? y + 5 : y + height - 10, 8, 5, 2);
-    ctx.fill();
-}
-
-function draw() {
-    // Clear canvas
-    ctx.clearRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
-    
-    // Draw road surface
-    ctx.fillStyle = '#334155'; // Slate 700
-    ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
-    
-    // Draw road borders
-    ctx.fillStyle = '#cbd5e1'; // Slate 300
-    ctx.fillRect(5, 0, 5, CANVAS_HEIGHT);
-    ctx.fillRect(CANVAS_WIDTH - 10, 0, 5, CANVAS_HEIGHT);
-    
-    // Draw lane dividers
-    ctx.fillStyle = 'rgba(255, 255, 255, 0.5)';
-    for (let i = 0; i < roadLines.length; i++) {
-        // Left divider
-        ctx.fillRect(LANE_WIDTH - 2, roadLines[i].y, 4, 30);
-        // Right divider
-        ctx.fillRect(LANE_WIDTH * 2 - 2, roadLines[i].y, 4, 30);
-    }
-    
-    // Draw obstacles
-    for (let i = 0; i < obstacles.length; i++) {
-        let obs = obstacles[i];
-        drawCar(obs.x, obs.y, obs.width, obs.height, obs.color);
-    }
-    
-    // Draw player
-    if (gameState !== 'GAMEOVER') {
-        drawCar(player.x, player.y, player.width, player.height, player.color);
-        
-        // Exhaust effect
-        if (frameCount % 4 < 2) {
-            ctx.fillStyle = 'rgba(255, 165, 0, 0.6)';
-            ctx.beginPath();
-            ctx.arc(player.x + 10, player.y + player.height + 5, 4, 0, Math.PI * 2);
-            ctx.fill();
-            ctx.beginPath();
-            ctx.arc(player.x + player.width - 10, player.y + player.height + 5, 4, 0, Math.PI * 2);
-            ctx.fill();
-        }
-    }
-}
-
-function gameLoop() {
-    if (gameState === 'PLAYING') {
-        update();
-        draw();
-        animationId = requestAnimationFrame(gameLoop);
     } else if (gameState === 'GAMEOVER') {
-        // Draw one last time to show crash state
-        draw();
+        // Slow down camera to show crash
+        camera.position.z += 0.2;
+        camera.lookAt(player.position);
     }
+    
+    // Render scene
+    renderer.render(scene, camera);
 }
 
-// Initial draw for background before start
-initRoadLines();
-draw();
+// Initial draw
+renderer.render(scene, camera);
+animate(); // Start idle animation before game starts
