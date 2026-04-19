@@ -5,8 +5,8 @@
 }
 
 body {
-    background-color: #000;
-    color: #f8fafc;
+    background-color: #87ceeb; /* Sky blue */
+    color: #1e293b;
     font-family: 'Inter', sans-serif;
     overflow: hidden;
     width: 100vw;
@@ -45,7 +45,7 @@ canvas {
     flex-direction: column;
     justify-content: center;
     align-items: center;
-    background-color: rgba(0, 0, 0, 0.6);
+    background-color: rgba(255, 255, 255, 0.7);
     backdrop-filter: blur(8px);
     z-index: 10;
 }
@@ -58,27 +58,27 @@ h1 {
     font-size: 4rem;
     font-weight: 900;
     margin-bottom: 1rem;
-    color: #38bdf8;
-    text-shadow: 0 0 20px rgba(56, 189, 248, 0.6), 0 0 40px rgba(56, 189, 248, 0.4);
+    color: #1e293b;
     letter-spacing: 4px;
     text-transform: uppercase;
     text-align: center;
 }
 
 #game-over-screen h1 {
-    color: #f43f5e;
-    text-shadow: 0 0 20px rgba(244, 63, 94, 0.6), 0 0 40px rgba(244, 63, 94, 0.4);
+    color: #dc2626; /* Red */
 }
 
 p {
     font-size: 1.5rem;
     margin-bottom: 0.5rem;
+    font-weight: 700;
 }
 
 .controls-hint {
     font-size: 1rem;
-    color: #94a3b8;
+    color: #475569;
     margin-top: 2rem;
+    font-weight: 400;
 }
 
 .pulse {
@@ -96,19 +96,21 @@ p {
     top: 2rem;
     left: 0;
     width: 100%;
+    padding: 0 4rem;
     display: flex;
-    justify-content: center;
+    justify-content: space-between;
     z-index: 5;
 }
 
-.score-display {
-    background-color: rgba(15, 23, 42, 0.8);
+.score-display, .speed-display {
+    background-color: rgba(255, 255, 255, 0.9);
     padding: 0.75rem 2rem;
     border-radius: 9999px;
     font-weight: 900;
     font-size: 1.5rem;
-    border: 1px solid rgba(56, 189, 248, 0.3);
-    color: #38bdf8;
-    box-shadow: 0 0 15px rgba(56, 189, 248, 0.2);
+    border: 1px solid #cbd5e1;
+    color: #1e293b;
+    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
     backdrop-filter: blur(4px);
 }
+
