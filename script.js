@@ -267,7 +267,7 @@ roadGroup.add(line2);
 
 // Obstacles
 let obstacles = [];
-const lanes = [-8, 0, 8];
+const lanes = [-8, -4, 0, 4, 8];
 const carColors = [0xb91c1c, 0x047857, 0xd97706, 0x475569, 0xf3f4f6];
 
 function spawnObstacle() {
